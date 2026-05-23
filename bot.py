@@ -3,12 +3,13 @@ from discord.ext import commands
 from discord import app_commands
 from datetime import datetime
 import sqlite3
+import os
 
 # =========================================
 # CONFIG
 # =========================================
 
-TOKEN = "MTUwNzQ4MTgyNTkwNjI2MjAzNw.Gu1VI2.ikcj4cx1dPvN7S9nZjN7T4TKMjZlCMnKOYLA0Y"
+TOKEN = os.getenv("DISCORD_TOKEN")
 
 # TU SERVER ID REAL
 GUILD_ID = 1036557219585589319
