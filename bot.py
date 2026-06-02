@@ -40,10 +40,9 @@ class MyBot(commands.Bot):
 
     async def setup_hook(self):
 
-        guild = discord.Object(id=GUILD_ID)
-        await self.tree.sync(guild=guild)
+    synced = await self.tree.sync()
 
-        print("Synced guild commands")
+    print(f"Synced {len(synced)} global commands")
 
 # =========================================
 # DISCORD SETUP
