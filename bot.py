@@ -130,7 +130,7 @@ async def addplayer(
         inline=False
     )
 
-    await interaction.response.send_message(embed=embed)
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 # =========================================
 # /STATS
@@ -179,7 +179,7 @@ async def stats(
             inline=False
         )
 
-        await interaction.response.send_message(embed=embed)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     else:
 
@@ -229,7 +229,7 @@ async def topelims(
 
         embed.description = leaderboard_text
 
-    await interaction.response.send_message(embed=embed)
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 # =========================================
 # /TOPPLAYTIME
@@ -272,7 +272,7 @@ async def topplaytime(
 
         embed.description = leaderboard_text
 
-    await interaction.response.send_message(embed=embed)
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 # =========================================
 # RUN BOT
