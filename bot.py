@@ -40,9 +40,9 @@ class MyBot(commands.Bot):
 
     async def setup_hook(self):
 
-    synced = await self.tree.sync()
-
-    print(f"Synced {len(synced)} global commands")
+        synced = await self.tree.sync()
+    
+        print(f"Synced {len(synced)} global commands")
 
 # =========================================
 # DISCORD SETUP
