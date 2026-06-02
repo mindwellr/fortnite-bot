@@ -13,7 +13,6 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 
 # TU SERVER ID REAL
 GUILD_ID = 1036557219585589319
-CURRENT_SEASON = 1
 
 # =========================================
 # DATABASE
@@ -24,11 +23,9 @@ cursor = conn.cursor()
 
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS players (
-    player_id TEXT PRIMARY KEY,
-    kills INTEGER,
+    epic_id TEXT PRIMARY KEY,
+    elims INTEGER,
     playtime INTEGER,
-    rank TEXT,
-    season INTEGER,
     register_date TEXT
 )
 """)
@@ -76,10 +73,10 @@ async def on_ready():
 
 SECRET = 4837
 
-def generate_signature(kills, playtime):
+def generate_signature(elims, playtime):
 
     return (
-        ((kills * 17) + SECRET) ^
+        ((elims * 17) + SECRET) ^
         ((playtime * 9) + 112)
     )
 
@@ -92,29 +89,25 @@ def generate_signature(kills, playtime):
     description="Add or update a player",
 )
 @app_commands.describe(
-    player_id="Player ID",
-    kills="Total kills",
-    playtime="Playtime in hours",
-    rank="Current rank"
+    epic_id="Epic ID",
+    elims="Total elims",
+    playtime="Playtime in hours"
 )
 async def addplayer(
     interaction: discord.Interaction,
-    player_id: str,
-    kills: int,
-    playtime: int,
-    rank: str
+    epic_id: str,
+    elims: int,
+    playtime: int
 ):
     current_date = datetime.now().strftime("%Y-%m-%d")
     cursor.execute("""
     INSERT OR REPLACE INTO players
-    (player_id, kills, playtime, rank, season, register_date)
-    VALUES (?, ?, ?, ?, ?, ?)
+    (epic_id, elims, playtime, register_date)
+    VALUES (?, ?, ?, ?)
     """, (
-            player_id,
-            kills,
+            epic_id,
+            elims,
             playtime,
-            rank,
-            CURRENT_SEASON,
             current_date
         ))
 
@@ -122,24 +115,18 @@ async def addplayer(
 
     embed = discord.Embed(
         title="Player Saved",
-        description=f"Player `{player_id}` updated."
+        description=f"Player `{epic_id}` updated."
     )
 
     embed.add_field(
-        name="Kills",
-        value=str(kills),
+        name="Elims",
+        value=str(elims),
         inline=False
     )
 
     embed.add_field(
         name="Playtime",
         value=f"{playtime}h",
-        inline=False
-    )
-
-    embed.add_field(
-        name="Rank",
-        value=rank,
         inline=False
     )
 
@@ -154,17 +141,17 @@ async def addplayer(
     description="View player stats",
 )
 @app_commands.describe(
-    player_id="Player ID"
+    epic_id="Epic ID"
 )
 async def stats(
     interaction: discord.Interaction,
-    player_id: str
+    epic_id: str
 ):
 
     cursor.execute("""
     SELECT * FROM players
-    WHERE player_id = ?
-    """, (player_id,))
+    WHERE epic_id = ?
+    """, (epic_id,))
 
     result = cursor.fetchone()
 
@@ -175,7 +162,7 @@ async def stats(
         )
 
         embed.add_field(
-            name="Kills",
+            name="Elims",
             value=str(result[1]),
             inline=False
         )
@@ -187,20 +174,8 @@ async def stats(
         )
 
         embed.add_field(
-            name="Rank",
-            value=result[3],
-            inline=False
-        )
-
-        embed.add_field(
-            name="Season",
-            value=str(result[4]),
-            inline=False
-        )
-
-        embed.add_field(
             name="Registered",
-            value=result[5],
+            value=result[3],
             inline=False
         )
 
@@ -214,30 +189,28 @@ async def stats(
         )
 
 # =========================================
-# /TOPKILLS
+# /TOPELIMS
 # =========================================
 
 @bot.tree.command(
-    name="topkills",
-    description="Top kills leaderboard",
+    name="topelims",
+    description="Top elims leaderboard",
 )
-async def topkills(
+async def topelims(
     interaction: discord.Interaction,
-    season: int = CURRENT_SEASON
 ):
 
     cursor.execute("""
-    SELECT player_id, kills
+    SELECT epic_id, elims
     FROM players
-    WHERE season = ?
-    ORDER BY kills DESC
+    ORDER BY elims DESC
     LIMIT 10
-    """, (season,))
+    """)
 
     results = cursor.fetchall()
 
     embed = discord.Embed(
-        title=f"Season {season} Top Kills"
+        title="Top Elims"
     )
 
     if len(results) == 0:
@@ -251,7 +224,7 @@ async def topkills(
         for i, row in enumerate(results, start=1):
 
             leaderboard_text += (
-                f"#{i} • `{row[0]}` • {row[1]} kills\n"
+                f"#{i} • `{row[0]}` • {row[1]} elims\n"
             )
 
         embed.description = leaderboard_text
@@ -268,21 +241,19 @@ async def topkills(
 )
 async def topplaytime(
     interaction: discord.Interaction,
-    season: int = CURRENT_SEASON
 ):
 
     cursor.execute("""
-    SELECT player_id, playtime
+    SELECT epic_id, playtime
     FROM players
-    WHERE season = ?
     ORDER BY playtime DESC
     LIMIT 10
-    """, (season,))
+    """)
 
     results = cursor.fetchall()
 
     embed = discord.Embed(
-        title=f"Season {season} Top Playtime"
+        title="Top Playtime"
     )
 
     if len(results) == 0:
