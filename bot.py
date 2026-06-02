@@ -2,8 +2,8 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 from datetime import datetime
-import sqlite3
 import os
+import psycopg2
 
 # =========================================
 # CONFIG
@@ -18,8 +18,14 @@ GUILD_ID = 1036557219585589319
 # DATABASE
 # =========================================
 
-conn = sqlite3.connect("stats.db")
-cursor = conn.cursor()
+def get_db():
+    conn = psycopg2.connect(os.getenv("DATABASE_URL"))
+    cursor = conn.cursor()
+    return conn, cursor
+
+
+# crear tabla al iniciar
+conn, cursor = get_db()
 
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS players (
@@ -31,6 +37,7 @@ CREATE TABLE IF NOT EXISTS players (
 """)
 
 conn.commit()
+conn.close()
 
 # =========================================
 # BOT CLASS
@@ -39,22 +46,17 @@ conn.commit()
 class MyBot(commands.Bot):
 
     async def setup_hook(self):
-
         synced = await self.tree.sync()
-    
         print(f"Synced {len(synced)} global commands")
+
 
 # =========================================
 # DISCORD SETUP
 # =========================================
 
 intents = discord.Intents.default()
-intents.message_content = True
+bot = MyBot(command_prefix="!", intents=intents)
 
-bot = MyBot(
-    command_prefix="!",
-    intents=intents
-)
 
 # =========================================
 # READY EVENT
@@ -62,22 +64,9 @@ bot = MyBot(
 
 @bot.event
 async def on_ready():
-
     print("BOT READY")
     print("Commands loaded:", [c.name for c in bot.tree.get_commands()])
 
-# =========================
-# SIGNATURE VERIFICATION
-# =========================
-
-SECRET = 4837
-
-def generate_signature(elims, playtime):
-
-    return (
-        ((elims * 17) + SECRET) ^
-        ((playtime * 9) + 112)
-    )
 
 # =========================================
 # /ADDPLAYER
@@ -92,44 +81,40 @@ def generate_signature(elims, playtime):
     elims="Total elims",
     playtime="Playtime in hours"
 )
-async def addplayer(
-    interaction: discord.Interaction,
-    epic_id: str,
-    elims: int,
-    playtime: int
-):
+async def addplayer(interaction: discord.Interaction, epic_id: str, elims: int, playtime: int):
+
     current_date = datetime.now().strftime("%Y-%m-%d")
+
+    conn, cursor = get_db()
+
     cursor.execute("""
-    INSERT OR REPLACE INTO players
-    (epic_id, elims, playtime, register_date)
-    VALUES (?, ?, ?, ?)
+    INSERT INTO players (epic_id, elims, playtime, register_date)
+    VALUES (%s, %s, %s, %s)
+    ON CONFLICT (epic_id)
+    DO UPDATE SET
+        elims = EXCLUDED.elims,
+        playtime = EXCLUDED.playtime,
+        register_date = EXCLUDED.register_date
     """, (
-            epic_id,
-            elims,
-            playtime,
-            current_date
-        ))
+        epic_id,
+        elims,
+        playtime,
+        current_date
+    ))
 
     conn.commit()
+    conn.close()
 
     embed = discord.Embed(
         title="Player Saved",
         description=f"Player `{epic_id}` updated."
     )
 
-    embed.add_field(
-        name="Elims",
-        value=str(elims),
-        inline=False
-    )
-
-    embed.add_field(
-        name="Playtime",
-        value=f"{playtime}h",
-        inline=False
-    )
+    embed.add_field(name="Elims", value=str(elims), inline=False)
+    embed.add_field(name="Playtime", value=f"{playtime}h", inline=False)
 
     await interaction.response.send_message(embed=embed, ephemeral=True)
+
 
 # =========================================
 # /STATS
@@ -139,53 +124,30 @@ async def addplayer(
     name="stats",
     description="View player stats",
 )
-@app_commands.describe(
-    epic_id="Epic ID"
-)
-async def stats(
-    interaction: discord.Interaction,
-    epic_id: str
-):
+async def stats(interaction: discord.Interaction, epic_id: str):
+
+    conn, cursor = get_db()
 
     cursor.execute("""
     SELECT * FROM players
-    WHERE epic_id = ?
+    WHERE epic_id = %s
     """, (epic_id,))
 
     result = cursor.fetchone()
+    conn.close()
 
     if result:
 
-        embed = discord.Embed(
-            title=f"Stats for {result[0]}"
-        )
-
-        embed.add_field(
-            name="Elims",
-            value=str(result[1]),
-            inline=False
-        )
-
-        embed.add_field(
-            name="Playtime",
-            value=f"{result[2]}h",
-            inline=False
-        )
-
-        embed.add_field(
-            name="Registered",
-            value=result[3],
-            inline=False
-        )
+        embed = discord.Embed(title=f"Stats for {result[0]}")
+        embed.add_field(name="Elims", value=str(result[1]), inline=False)
+        embed.add_field(name="Playtime", value=f"{result[2]}h", inline=False)
+        embed.add_field(name="Registered", value=result[3], inline=False)
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     else:
+        await interaction.response.send_message("Player not found.", ephemeral=True)
 
-        await interaction.response.send_message(
-            "Player not found.",
-            ephemeral=True
-        )
 
 # =========================================
 # /TOPELIMS
@@ -195,9 +157,9 @@ async def stats(
     name="topelims",
     description="Top elims leaderboard",
 )
-async def topelims(
-    interaction: discord.Interaction,
-):
+async def topelims(interaction: discord.Interaction):
+
+    conn, cursor = get_db()
 
     cursor.execute("""
     SELECT epic_id, elims
@@ -207,28 +169,20 @@ async def topelims(
     """)
 
     results = cursor.fetchall()
+    conn.close()
 
-    embed = discord.Embed(
-        title="Top Elims"
-    )
+    embed = discord.Embed(title="Top Elims")
 
-    if len(results) == 0:
-
+    if not results:
         embed.description = "No players found."
-
     else:
-
-        leaderboard_text = ""
-
+        text = ""
         for i, row in enumerate(results, start=1):
-
-            leaderboard_text += (
-                f"#{i} • `{row[0]}` • {row[1]} elims\n"
-            )
-
-        embed.description = leaderboard_text
+            text += f"#{i} • `{row[0]}` • {row[1]} elims\n"
+        embed.description = text
 
     await interaction.response.send_message(embed=embed, ephemeral=True)
+
 
 # =========================================
 # /TOPPLAYTIME
@@ -238,9 +192,9 @@ async def topelims(
     name="topplaytime",
     description="Top playtime leaderboard",
 )
-async def topplaytime(
-    interaction: discord.Interaction,
-):
+async def topplaytime(interaction: discord.Interaction):
+
+    conn, cursor = get_db()
 
     cursor.execute("""
     SELECT epic_id, playtime
@@ -250,31 +204,24 @@ async def topplaytime(
     """)
 
     results = cursor.fetchall()
+    conn.close()
 
-    embed = discord.Embed(
-        title="Top Playtime"
-    )
+    embed = discord.Embed(title="Top Playtime")
 
-    if len(results) == 0:
-
+    if not results:
         embed.description = "No players found."
-
     else:
-
-        leaderboard_text = ""
-
+        text = ""
         for i, row in enumerate(results, start=1):
-
-            leaderboard_text += (
-                f"#{i} • `{row[0]}` • {row[1]}h\n"
-            )
-
-        embed.description = leaderboard_text
+            text += f"#{i} • `{row[0]}` • {row[1]}h\n"
+        embed.description = text
 
     await interaction.response.send_message(embed=embed, ephemeral=True)
+
 
 # =========================================
 # RUN BOT
 # =========================================
+
 print("Starting bot...")
 bot.run(TOKEN)
