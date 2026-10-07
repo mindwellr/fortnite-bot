@@ -31,8 +31,10 @@ Los mensajes salen en español o inglés según el idioma de Discord de cada usu
 3. Copia el **Client Secret** (pulsa *Reset Secret* si no lo ves). Es tu `DISCORD_CLIENT_SECRET`.
 4. En **Bot**, copia el token (o pulsa *Reset Token*). Es tu `DISCORD_TOKEN`.
 
-### 4. Hosting del bot
-1. Sube el código al hosting (o conéctalo a este repositorio de GitHub).
-2. Crea un archivo `.env` junto a `bot.py` copiando `.env.example` y rellena los valores.
+### 4. Hosting del bot (ej. Wispbyte)
+1. Sube solo `start.py` al hosting y ponlo como archivo de inicio.
+   Cada vez que el bot se enciende, `start.py` descarga la última versión de
+   este repositorio, instala las dependencias y arranca `bot.py`.
+   Para aplicar cambios nuevos basta con **reiniciar** el bot.
+2. Crea un archivo `.env` junto a `start.py` copiando `.env.example` y rellena los valores.
    **Nunca subas el `.env` a GitHub**: este repositorio es público.
-3. Archivo de inicio: `bot.py`. Las dependencias están en `requirements.txt`.
