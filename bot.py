@@ -51,7 +51,6 @@ log = logging.getLogger("fortnite-bot")
 MESSAGES = {
     "en": {
         "cooldown": "⏳ Wait {seconds}s before using this command again.",
-        "invalid_values": "❌ Elims and playtime can't be negative.",
         "need_verify": "🔒 First link your Epic Games account with `/verify`. That way nobody can submit stats in your name.",
         "created": "✅ Player `{epic_id}` registered.",
         "updated": "✅ Player `{epic_id}` updated.",
@@ -93,7 +92,6 @@ MESSAGES = {
     },
     "es": {
         "cooldown": "⏳ Espera {seconds}s antes de volver a usar este comando.",
-        "invalid_values": "❌ Las eliminaciones y el tiempo jugado no pueden ser negativos.",
         "need_verify": "🔒 Primero vincula tu cuenta de Epic Games con `/verify`. Así nadie puede subir stats en tu nombre.",
         "created": "✅ Jugador `{epic_id}` registrado.",
         "updated": "✅ Jugador `{epic_id}` actualizado.",
@@ -204,7 +202,8 @@ def _db_run(sql: str, params=(), fetch=None):
     finally:
         conn.close()
 
-PLAYER_COLUMNS = "epic_id, elims, playtime, register_date, last_update, owner_id, epic_account_id"
+# playtime_minutes = tiempo jugado en minutos (la columna antigua "playtime" era en horas)
+PLAYER_COLUMNS = "epic_id, elims, playtime_minutes, register_date, last_update, owner_id, epic_account_id"
 
 def _db_init():
     conn = _connect()
@@ -226,6 +225,15 @@ def _db_init():
             # ID real de la cuenta de Epic (no cambia aunque cambie el nombre)
             cur.execute("ALTER TABLE players ADD COLUMN IF NOT EXISTS epic_account_id TEXT")
             cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS players_account_idx ON players (epic_account_id)")
+
+            # El tiempo jugado pasa de horas a minutos: se convierte una sola vez
+            cur.execute("""
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'players' AND column_name = 'playtime_minutes'
+            """)
+            if not cur.fetchone():
+                cur.execute("ALTER TABLE players ADD COLUMN playtime_minutes INTEGER")
+                cur.execute("UPDATE players SET playtime_minutes = playtime * 60")
 
             # Cuentas de Discord verificadas con su cuenta de Epic Games
             cur.execute("""
@@ -282,9 +290,10 @@ def _db_save_verification(discord_id: int, account_id: str, epic_name: str, toda
     """, (discord_id, account_id, epic_name, today))
 
 def _db_save_player(account_id: str, epic_name: str, elims: int, playtime: int, today: str, user_id: int):
+    # playtime en minutos
     """
     Registra o actualiza las stats de una cuenta de Epic YA VERIFICADA.
-    - Siempre se conserva el valor más alto de elims y playtime.
+    - Siempre se conserva el valor más alto de elims y tiempo jugado.
     - Solo se puede actualizar una vez al día, y solo si algún valor sube.
     - Los jugadores registrados antes de la verificación se vinculan por nombre
       la primera vez que su dueño real los actualiza.
@@ -314,7 +323,7 @@ def _db_save_player(account_id: str, epic_name: str, elims: int, playtime: int, 
 
             if row is None:
                 cur.execute(f"""
-                INSERT INTO players (epic_id, elims, playtime, register_date, last_update, owner_id, epic_account_id)
+                INSERT INTO players (epic_id, elims, playtime_minutes, register_date, last_update, owner_id, epic_account_id)
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
                 RETURNING {PLAYER_COLUMNS}
                 """, (epic_name, elims, playtime, today, today, user_id, account_id))
@@ -337,7 +346,7 @@ def _db_save_player(account_id: str, epic_name: str, elims: int, playtime: int, 
             UPDATE players SET
                 epic_id = %s,
                 elims = GREATEST(elims, %s),
-                playtime = GREATEST(playtime, %s),
+                playtime_minutes = GREATEST(playtime_minutes, %s),
                 last_update = %s,
                 owner_id = %s
             WHERE epic_account_id = %s
@@ -565,12 +574,16 @@ def stats_embed(interaction: discord.Interaction, row) -> discord.Embed:
     epic_id, elims, playtime, register_date, last_update, owner_id, account_id = row
     embed = discord.Embed(title=t(interaction, "stats_title", epic_id=epic_id))
     embed.add_field(name=t(interaction, "elims"), value=elims, inline=False)
-    embed.add_field(name=t(interaction, "playtime"), value=f"{playtime}h", inline=False)
+    embed.add_field(name=t(interaction, "playtime"), value=format_playtime(playtime), inline=False)
     embed.add_field(name=t(interaction, "registered"), value=register_date or "-", inline=True)
     embed.add_field(name=t(interaction, "last_update"), value=last_update or "-", inline=True)
     embed.add_field(name=t(interaction, "verified"), value="✅" if account_id else "❌", inline=True)
     embed.add_field(name=t(interaction, "owner"), value=f"<@{owner_id}>" if owner_id else "-", inline=True)
     return embed
+
+def format_playtime(minutes) -> str:
+    minutes = minutes or 0
+    return f"{minutes // 60}h {minutes % 60}m"
 
 def next_utc_midnight() -> int:
     tomorrow = datetime.now(timezone.utc).date() + timedelta(days=1)
@@ -599,14 +612,22 @@ async def verify(interaction: discord.Interaction):
 # =========================================
 
 @bot.tree.command(name="addplayer", description="Register or update your stats")
-async def addplayer(interaction: discord.Interaction, elims: int, playtime: int):
+@app_commands.describe(
+    elims="Eliminations / Eliminaciones",
+    hours="Playtime hours / Horas jugadas",
+    minutes="Playtime minutes / Minutos jugados",
+)
+async def addplayer(
+    interaction: discord.Interaction,
+    elims: app_commands.Range[int, 0, 10_000_000],
+    hours: app_commands.Range[int, 0, 100_000],
+    minutes: app_commands.Range[int, 0, 59] = 0,
+):
 
     if await on_cooldown(interaction, "addplayer"):
         return
 
-    if elims < 0 or playtime < 0:
-        await interaction.response.send_message(t(interaction, "invalid_values"), ephemeral=True)
-        return
+    playtime = hours * 60 + minutes
 
     await interaction.response.defer(ephemeral=True, thinking=True)
 
@@ -710,10 +731,10 @@ async def removeplayer(interaction: discord.Interaction, epic_id: str):
 
 LEADERBOARD_QUERIES = {
     "elims": "SELECT epic_id, elims, epic_account_id IS NOT NULL FROM players ORDER BY elims DESC NULLS LAST LIMIT 10",
-    "playtime": "SELECT epic_id, playtime, epic_account_id IS NOT NULL FROM players ORDER BY playtime DESC NULLS LAST LIMIT 10",
+    "playtime": "SELECT epic_id, playtime_minutes, epic_account_id IS NOT NULL FROM players ORDER BY playtime_minutes DESC NULLS LAST LIMIT 10",
 }
 
-async def send_leaderboard(interaction: discord.Interaction, column: str, title_key: str, suffix: str = ""):
+async def send_leaderboard(interaction: discord.Interaction, column: str, title_key: str, fmt=str):
     rows = cache_get(leaderboard_cache, column)
 
     if rows is None:
@@ -722,7 +743,7 @@ async def send_leaderboard(interaction: discord.Interaction, column: str, title_
         cache_set(leaderboard_cache, column, rows)
 
     text = "\n".join(
-        f"#{i} • `{epic_id}`{' ✅' if verified else ''} • {value}{suffix}"
+        f"#{i} • `{epic_id}`{' ✅' if verified else ''} • {fmt(value)}"
         for i, (epic_id, value, verified) in enumerate(rows, 1)
     ) if rows else t(interaction, "no_players")
 
@@ -743,7 +764,7 @@ async def topelims(interaction: discord.Interaction):
 async def topplaytime(interaction: discord.Interaction):
     if await on_cooldown(interaction, "topplaytime"):
         return
-    await send_leaderboard(interaction, "playtime", "top_playtime", suffix="h")
+    await send_leaderboard(interaction, "playtime", "top_playtime", fmt=format_playtime)
 
 # =========================================
 # RUN
