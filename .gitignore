@@ -1,0 +1,3 @@
+# Claves y contraseñas: nunca subirlas a GitHub
+.env
+__pycache__/

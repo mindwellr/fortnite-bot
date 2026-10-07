@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Epic Games Verification</title>
+<style>
+  :root { --bg: #f4f5f7; --card: #fff; --text: #1e1f22; --muted: #5c5f66; --accent: #5865f2; --code-bg: #eef0ff; --ok: #1f8b4c; --bad: #c62828; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #1e1f22; --card: #2b2d31; --text: #f2f3f5; --muted: #b5bac1; --code-bg: #383a40; --ok: #3ba55c; --bad: #ed4245; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+         padding: 16px; background: var(--bg); color: var(--text);
+         font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { width: 100%; max-width: 440px; background: var(--card); border-radius: 12px; padding: 28px 24px; text-align: center; }
+  h1 { font-size: 1.3rem; margin: 0 0 8px; }
+  p { color: var(--muted); line-height: 1.5; margin: 8px 0; }
+  .code { margin: 20px 0 12px; padding: 14px; border-radius: 8px; background: var(--code-bg);
+          font: 600 1.05rem ui-monospace, Menlo, Consolas, monospace; word-break: break-all; user-select: all; }
+  button { width: 100%; padding: 12px; border: 0; border-radius: 8px; background: var(--accent);
+           color: #fff; font-size: 1rem; font-weight: 600; cursor: pointer; }
+  .ok { color: var(--ok); } .bad { color: var(--bad); }
+  [hidden] { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <section id="success" hidden>
+    <h1 data-t="title"></h1>
+    <p data-t="step"></p>
+    <div class="code" id="code"></div>
+    <button id="copy" data-t="copy"></button>
+    <p class="ok" id="copied" hidden data-t="copied"></p>
+    <p data-t="private"></p>
+  </section>
+  <section id="failure" hidden>
+    <h1 class="bad" data-t="failTitle"></h1>
+    <p data-t="failText"></p>
+  </section>
+</main>
+<script>
+  // Esta página no envía el código a ningún sitio: solo lo muestra para pegarlo en el bot.
+  const text = {
+    en: {
+      title: "Almost done!",
+      step: "Copy this code, go back to Discord and press “Enter code”.",
+      copy: "Copy code",
+      copied: "Copied ✓",
+      private: "Don't share this code with anyone. It expires in a few minutes.",
+      failTitle: "Authorization cancelled",
+      failText: "Go back to Discord and use /verify again.",
+    },
+    es: {
+      title: "¡Ya casi!",
+      step: "Copia este código, vuelve a Discord y pulsa “Introducir código”.",
+      copy: "Copiar código",
+      copied: "Copiado ✓",
+      private: "No compartas este código con nadie. Caduca en pocos minutos.",
+      failTitle: "Autorización cancelada",
+      failText: "Vuelve a Discord y usa /verify otra vez.",
+    },
+  };
+  const lang = (navigator.language || "en").toLowerCase().startsWith("es") ? "es" : "en";
+  document.documentElement.lang = lang;
+  document.querySelectorAll("[data-t]").forEach(el => { el.textContent = text[lang][el.dataset.t]; });
+
+  const code = new URLSearchParams(location.search).get("code");
+  if (code) {
+    document.getElementById("code").textContent = code;
+    document.getElementById("success").hidden = false;
+    document.getElementById("copy").addEventListener("click", async () => {
+      try { await navigator.clipboard.writeText(code); } catch (e) {
+        const range = document.createRange();
+        range.selectNodeContents(document.getElementById("code"));
+        getSelection().removeAllRanges(); getSelection().addRange(range);
+        document.execCommand("copy");
+      }
+      document.getElementById("copied").hidden = false;
+    });
+  } else {
+    document.getElementById("failure").hidden = false;
+  }
+</script>
+</body>
+</html>
