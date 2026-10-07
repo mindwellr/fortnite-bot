@@ -8,10 +8,12 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 from urllib.parse import quote, urlencode
 
+import base64
+
 import aiohttp
 import discord
 import psycopg2
-from discord.ext import commands
+from discord import app_commands
 from dotenv import load_dotenv
 
 # =========================================
@@ -391,7 +393,8 @@ def extract_code(text: str) -> Optional[str]:
     return code if re.fullmatch(r"[A-Za-z0-9_-]{10,100}", code) else None
 
 def client_auth(client_id: int) -> dict:
-    return {"Authorization": aiohttp.BasicAuth(str(client_id), DISCORD_CLIENT_SECRET).encode()}
+    credentials = base64.b64encode(f"{client_id}:{DISCORD_CLIENT_SECRET}".encode()).decode()
+    return {"Authorization": f"Basic {credentials}"}
 
 async def fetch_epic_account(code: str, client_id: int):
     """Devuelve (discord_user_id, [conexiones de Epic verificadas])."""
@@ -504,7 +507,11 @@ class VerifyView(discord.ui.View):
 # BOT
 # =========================================
 
-class MyBot(commands.Bot):
+class MyBot(discord.Client):
+
+    def __init__(self):
+        super().__init__(intents=discord.Intents.default())
+        self.tree = app_commands.CommandTree(self)
 
     async def setup_hook(self):
         await asyncio.to_thread(_db_init)
@@ -515,6 +522,10 @@ class MyBot(commands.Bot):
                 self.tree.copy_global_to(guild=guild)
                 synced = await self.tree.sync(guild=guild)
                 print(f"Synced {len(synced)} commands to guild {GUILD_ID}")
+                # Borra los comandos globales que registraron versiones antiguas
+                # del bot; si no, cada comando aparece duplicado en el servidor.
+                self.tree.clear_commands(guild=None)
+                await self.tree.sync()
             else:
                 synced = await self.tree.sync()
                 print(f"Synced {len(synced)} commands globally")
@@ -525,8 +536,7 @@ class MyBot(commands.Bot):
                 "'applications.commands' scope."
             )
 
-intents = discord.Intents.default()
-bot = MyBot(command_prefix="!", intents=intents)
+bot = MyBot()
 
 # =========================================
 # READY
@@ -543,7 +553,7 @@ async def on_ready():
 # =========================================
 
 @bot.tree.error
-async def on_app_command_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError):
+async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
     log.error("Error in command %s", interaction.command and interaction.command.name, exc_info=error)
     await send_error(interaction)
 
@@ -672,8 +682,8 @@ async def stats(interaction: discord.Interaction, epic_id: Optional[str] = None)
 # =========================================
 
 @bot.tree.command(name="removeplayer", description="(Admin) Remove a player")
-@discord.app_commands.default_permissions(manage_guild=True)
-@discord.app_commands.guild_only()
+@app_commands.default_permissions(manage_guild=True)
+@app_commands.guild_only()
 async def removeplayer(interaction: discord.Interaction, epic_id: str):
 
     if not interaction.permissions.manage_guild:
@@ -739,5 +749,4 @@ async def topplaytime(interaction: discord.Interaction):
 # RUN
 # =========================================
 
-print("Starting bot...")
 bot.run(TOKEN, root_logger=True)
