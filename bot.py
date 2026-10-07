@@ -513,6 +513,45 @@ class VerifyView(discord.ui.View):
         await interaction.response.send_modal(CodeModal(interaction))
 
 # =========================================
+# TRADUCCIÓN DE LOS COMANDOS
+# Discord muestra estas traducciones a quien tenga Discord en español.
+# Los nombres de los comandos se quedan en inglés; solo se traducen las
+# descripciones y los campos.
+# =========================================
+
+COMMAND_TEXT_ES = {
+    # Descripciones de comandos
+    "Link your Epic Games account": "Vincula tu cuenta de Epic Games",
+    "Register or update your stats": "Registra o actualiza tus stats",
+    "View stats": "Ver las stats de un jugador",
+    "(Admin) Remove a player": "(Admin) Eliminar un jugador",
+    "Top 10 players by elims": "Top 10 jugadores por eliminaciones",
+    "Top 10 players by playtime": "Top 10 jugadores por tiempo jugado",
+    # Campos
+    "elims": "eliminaciones",
+    "hours": "horas",
+    "minutes": "minutos",
+    "Eliminations": "Eliminaciones",
+    "Hours played": "Horas jugadas",
+    "Minutes played (0-59)": "Minutos jugados (0-59)",
+    "Epic ID (leave empty to see yours)": "Epic ID (déjalo vacío para ver el tuyo)",
+    "Epic ID to remove": "Epic ID a eliminar",
+}
+
+TRANSLATED_LOCATIONS = (
+    app_commands.TranslationContextLocation.command_description,
+    app_commands.TranslationContextLocation.parameter_name,
+    app_commands.TranslationContextLocation.parameter_description,
+)
+
+class SpanishTranslator(app_commands.Translator):
+
+    async def translate(self, string: app_commands.locale_str, locale: discord.Locale, context):
+        if not str(locale).startswith("es") or context.location not in TRANSLATED_LOCATIONS:
+            return None
+        return COMMAND_TEXT_ES.get(string.message)
+
+# =========================================
 # BOT
 # =========================================
 
@@ -524,6 +563,7 @@ class MyBot(discord.Client):
 
     async def setup_hook(self):
         await asyncio.to_thread(_db_init)
+        await self.tree.set_translator(SpanishTranslator())
 
         try:
             if GUILD_ID:
@@ -613,9 +653,9 @@ async def verify(interaction: discord.Interaction):
 
 @bot.tree.command(name="addplayer", description="Register or update your stats")
 @app_commands.describe(
-    elims="Eliminations / Eliminaciones",
-    hours="Playtime hours / Horas jugadas",
-    minutes="Playtime minutes / Minutos jugados",
+    elims="Eliminations",
+    hours="Hours played",
+    minutes="Minutes played (0-59)",
 )
 async def addplayer(
     interaction: discord.Interaction,
@@ -666,6 +706,7 @@ async def addplayer(
 # =========================================
 
 @bot.tree.command(name="stats", description="View stats")
+@app_commands.describe(epic_id="Epic ID (leave empty to see yours)")
 async def stats(interaction: discord.Interaction, epic_id: Optional[str] = None):
 
     if await on_cooldown(interaction, "stats"):
@@ -705,6 +746,7 @@ async def stats(interaction: discord.Interaction, epic_id: Optional[str] = None)
 @bot.tree.command(name="removeplayer", description="(Admin) Remove a player")
 @app_commands.default_permissions(manage_guild=True)
 @app_commands.guild_only()
+@app_commands.describe(epic_id="Epic ID to remove")
 async def removeplayer(interaction: discord.Interaction, epic_id: str):
 
     if not interaction.permissions.manage_guild:

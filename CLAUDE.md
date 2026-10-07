@@ -38,6 +38,9 @@ Servidor de Discord: UNIWELL (`GUILD_ID` 1036557219585589319).
   La columna antigua `playtime` (horas) ya no se usa.
 - **Idiomas:** todos los mensajes están en `MESSAGES` con versión `en` y `es`; se elige según el
   idioma de Discord del usuario. Al añadir un mensaje, añadirlo en **ambos** idiomas.
+  Las descripciones y los campos de los comandos se traducen al español con `COMMAND_TEXT_ES`
+  (`SpanishTranslator`); al añadir o cambiar un comando, añadir ahí sus textos. Los nombres de los
+  comandos se quedan en inglés.
 - Los comandos se registran solo en el servidor (`GUILD_ID`) y al arrancar se borran los globales
   (si no, aparecen duplicados).
 - Consultas a la base de datos en hilos (`asyncio.to_thread`); caché en memoria de 30 s;
